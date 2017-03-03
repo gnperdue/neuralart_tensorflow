@@ -1,3 +1,4 @@
+from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import scipy.io
@@ -5,8 +6,8 @@ import scipy.misc
 import os
 
 
-IMAGE_W = 800 
-IMAGE_H = 600 
+IMAGE_W = 800
+IMAGE_H = 600
 CONTENT_IMG =  './images/Taipei101.jpg'
 STYLE_IMG = './images/StarryNight.jpg'
 OUTOUT_DIR = './results'
@@ -14,7 +15,8 @@ OUTPUT_IMG = 'results.png'
 VGG_MODEL = 'imagenet-vgg-verydeep-19.mat'
 INI_NOISE_RATIO = 0.7
 STYLE_STRENGTH = 500
-ITERATION = 5000
+ITERATION = 10
+# ITERATION = 5000
 
 CONTENT_LAYERS =[('conv4_2',1.)]
 STYLE_LAYERS=[('conv1_1',1.),('conv2_1',1.),('conv3_1',1.),('conv4_1',1.),('conv5_1',1.)]
@@ -24,7 +26,9 @@ MEAN_VALUES = np.array([123, 117, 104]).reshape((1,1,1,3))
 
 def build_net(ntype, nin, nwb=None):
   if ntype == 'conv':
-    return tf.nn.relu(tf.nn.conv2d(nin, nwb[0], strides=[1, 1, 1, 1], padding='SAME')+ nwb[1])
+    return tf.nn.relu(
+        tf.nn.conv2d(nin, nwb[0], strides=[1, 1, 1, 1], padding='SAME') + nwb[1]
+    )
   elif ntype == 'pool':
     return tf.nn.avg_pool(nin, ksize=[1, 2, 2, 1],
                   strides=[1, 2, 2, 1], padding='SAME')
@@ -67,7 +71,7 @@ def build_vgg19(path):
 def build_content_loss(p, x):
   M = p.shape[1]*p.shape[2]
   N = p.shape[3]
-  loss = (1./(2* N**0.5 * M**0.5 )) * tf.reduce_sum(tf.pow((x - p),2))  
+  loss = (1./(2* N**0.5 * M**0.5 )) * tf.reduce_sum(tf.pow((x - p),2))
   return loss
 
 
@@ -93,14 +97,17 @@ def build_style_loss(a, x):
 
 def read_image(path):
   image = scipy.misc.imread(path)
-  image = image[np.newaxis,:IMAGE_H,:IMAGE_W,:] 
+  print('reading image with', np.min(image), np.max(image))
+  image = image[np.newaxis,:IMAGE_H,:IMAGE_W,:]
   image = image - MEAN_VALUES
+  print('returning image with', np.min(image), np.max(image))
   return image
 
 def write_image(path, image):
   image = image + MEAN_VALUES
   image = image[0]
   image = np.clip(image, 0, 255).astype('uint8')
+  print('writing image with', np.min(image), np.max(image))
   scipy.misc.imsave(path, image)
 
 
@@ -113,32 +120,42 @@ def main():
   style_img = read_image(STYLE_IMG)
 
   sess.run([net['input'].assign(content_img)])
-  cost_content = sum(map(lambda l,: l[1]*build_content_loss(sess.run(net[l[0]]) ,  net[l[0]])
-    , CONTENT_LAYERS))
+  cost_content = sum(
+      map(lambda l,: l[1]*build_content_loss(sess.run(net[l[0]]), net[l[0]]),
+          CONTENT_LAYERS)
+  )
 
   sess.run([net['input'].assign(style_img)])
-  cost_style = sum(map(lambda l: l[1]*build_style_loss(sess.run(net[l[0]]) ,  net[l[0]])
-    , STYLE_LAYERS))
+  cost_style = sum(
+      map(lambda l: l[1]*build_style_loss(sess.run(net[l[0]]), net[l[0]]),
+          STYLE_LAYERS)
+  )
 
   cost_total = cost_content + STYLE_STRENGTH * cost_style
   optimizer = tf.train.AdamOptimizer(2.0)
 
   train = optimizer.minimize(cost_total)
   sess.run(tf.initialize_all_variables())
-  sess.run(net['input'].assign( INI_NOISE_RATIO* noise_img + (1.-INI_NOISE_RATIO) * content_img))
+  initial_img = INI_NOISE_RATIO * noise_img + \
+      (1. - INI_NOISE_RATIO) * content_img
+  sess.run(net['input'].assign(initial_img))
+  write_image(
+      os.path.join(OUTOUT_DIR, 'initial.png'), initial_img
+  )
 
   if not os.path.exists(OUTOUT_DIR):
       os.mkdir(OUTOUT_DIR)
 
+  PRINT_FREQ = 1
   for i in range(ITERATION):
     sess.run(train)
-    if i%100 ==0:
+    if i % PRINT_FREQ == 0:
       result_img = sess.run(net['input'])
-      print sess.run(cost_total)
+      print(sess.run(cost_total))
       write_image(os.path.join(OUTOUT_DIR,'%s.png'%(str(i).zfill(4))),result_img)
-  
+
   write_image(os.path.join(OUTOUT_DIR,OUTPUT_IMG),result_img)
-  
+
 
 if __name__ == '__main__':
   main()
